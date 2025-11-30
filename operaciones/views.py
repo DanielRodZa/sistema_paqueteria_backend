@@ -11,6 +11,8 @@ from .permissions import IsAdminUser, IsAdminOrManagerUser, CanMarkAsPaidPermiss
 
 
 
+from configuracion.models import Configuracion
+
 class OperacionListCreateView(generics.ListCreateAPIView):
     """
     Vista para listar y crear operaciones.
@@ -22,14 +24,33 @@ class OperacionListCreateView(generics.ListCreateAPIView):
     def perform_create(self, serializer):
         sucursal_origen = serializer.validated_data.get('sucursal_origen')
         sucursal_destino = serializer.validated_data.get('sucursal_destino')
+        tamano_paquete = serializer.validated_data.get('tamano_paquete')
 
-        costo = 10.00 if sucursal_origen.id == sucursal_destino.id else 20.00
+        # Get configuration or use defaults
+        config = Configuracion.objects.first()
+        if not config:
+            config = Configuracion.objects.create()
 
-        serializer.save(costo=costo)
+        # Base cost
+        if sucursal_origen.id == sucursal_destino.id:
+            costo = config.costo_operacion_base
+        else:
+            costo = config.costo_envio_sucursal
+
+        # Extra cost for Extra Large
+        if tamano_paquete == 'XL':
+            costo += config.costo_extra_largo
+
+        # Extra cost for Urgent delivery
+        tipo_entrega = serializer.validated_data.get('tipo_entrega')
+        if tipo_entrega == 'urgente':
+            costo += config.costo_urgente
+
+        serializer.save(costo=costo, recibido_por=self.request.user)
 
     def get_queryset(self):
         user = self.request.user
-        if user.role == 'ADMIN':
+        if user.role == 'ADMIN' or user.is_superuser:
             return Operacion.objects.all()
         elif user.sucursal:
             return Operacion.objects.filter(models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal))
@@ -44,6 +65,14 @@ class OperacionDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = OperacionSerializer
     lookup_field = 'folio'
 
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'ADMIN' or user.is_superuser:
+            return Operacion.objects.all()
+        elif user.sucursal:
+            return Operacion.objects.filter(models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal))
+        return Operacion.objects.none()
+
     def get_permissions(self):
         """
         Asigna permisos basados en el método de la petición.
@@ -51,12 +80,21 @@ class OperacionDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ['PUT', 'PATCH']:
             # Para modificar, el usuario debe ser Admin/Manager O
             # (si es recepcionista) solo debe estar cambiando campos permitidos.
-            return [IsAdminOrManagerUser() or CanMarkAsPaidPermission()]
+            return [(IsAdminOrManagerUser | CanMarkAsPaidPermission)()]
 
         if self.request.method == 'DELETE':
             return [IsAdminOrManagerUser()]
 
         return [IsAuthenticated()]
+
+    def perform_update(self, serializer):
+        instance = self.get_object()
+        new_estado = serializer.validated_data.get('estado')
+
+        if new_estado == 'entregado' and instance.estado != 'entregado':
+            serializer.save(entregado_por=self.request.user)
+        else:
+            serializer.save()
 
 
 class ReportesView(APIView):
@@ -70,7 +108,7 @@ class ReportesView(APIView):
         user = self.request.user
 
         # Define the base queryset based on user role and branch
-        if user.role == 'ADMIN':
+        if user.role == 'ADMIN' or user.is_superuser:
             # Admins see everything
             base_queryset = Operacion.objects.all()
         elif user.sucursal:
@@ -97,10 +135,42 @@ class ReportesView(APIView):
         conteo_por_estado = base_queryset.values('estado').annotate(count=Count('folio')).order_by('estado')
         corte_de_caja = base_queryset.filter(pagado=True).aggregate(total=Sum('costo'))['total'] or 0.00
 
+        # Expired packages logic (Current Month)
+        from django.utils import timezone
+        now = timezone.now()
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        
+        # Filter for expired packages in the current month within the base queryset (respecting permissions)
+        paquetes_expirados_qs = base_queryset.filter(
+            fecha_expiracion__gte=start_of_month.date(),
+            fecha_expiracion__lte=now.date(), # Assuming expiration date is effectively "expired" if it's in the past or today
+            # You might want to adjust this logic depending on exactly how you define "expired this month"
+            # If it means "expiration date falls within this month":
+            # fecha_expiracion__year=now.year,
+            # fecha_expiracion__month=now.month
+        )
+        
+        # Using the "expiration date falls within this month" logic as per requirement T11 usually implies
+        paquetes_expirados_qs = base_queryset.filter(
+            fecha_expiracion__year=now.year,
+            fecha_expiracion__month=now.month
+        )
+
+        paquetes_expirados_data = [
+            {
+                'folio': op.folio,
+                'vendedor_nombre': op.vendedor_nombre,
+                'fecha_expiracion': op.fecha_expiracion,
+                'costo': op.costo
+            }
+            for op in paquetes_expirados_qs
+        ]
+
         data = {
             'total_operaciones_periodo': total_operaciones_periodo,
             'corte_de_caja': corte_de_caja,
-            'conteo_por_estado': list(conteo_por_estado)
+            'conteo_por_estado': list(conteo_por_estado),
+            'paquetes_expirados': paquetes_expirados_data
         }
 
         return Response(data)

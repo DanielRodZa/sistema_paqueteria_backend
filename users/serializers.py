@@ -9,9 +9,24 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
 
         # Añade claims personalizados
         token['username'] = user.username
-        token['role'] = user.role
+        if user.is_superuser:
+            token['role'] = 'ADMIN'
+        else:
+            token['role'] = user.role
 
         return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+
+        # Add custom data to the response body
+        data['username'] = self.user.username
+        if self.user.is_superuser:
+            data['role'] = 'ADMIN'
+        else:
+            data['role'] = self.user.role
+
+        return data
 
 
 class RecepcionistaCreateSerializer(serializers.ModelSerializer):
@@ -42,4 +57,4 @@ class UserSerializer(serializers.ModelSerializer):
             'sucursal',
             'sucursal_nombre'
         ]
-        read_only_fields = ['id', 'username']
+        read_only_fields = ['id']
