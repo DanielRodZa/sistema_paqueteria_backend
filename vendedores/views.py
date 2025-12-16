@@ -7,7 +7,11 @@ from rest_framework.permissions import IsAuthenticated
 class VendedorListCreateView(generics.ListCreateAPIView):
     queryset = Vendedor.objects.all()
     serializer_class = VendedorSerializer
-    permission_classes = [IsAdminOrManagerUser]
+    
+    def get_permissions(self):
+        if self.request.method in ['GET', 'POST']:
+            return [IsAuthenticated()]
+        return [IsAdminOrManagerUser()]
 
 
 class VendedorDetailView(generics.RetrieveUpdateDestroyAPIView):

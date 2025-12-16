@@ -29,16 +29,22 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
+
 class RecepcionistaCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         fields = ['username', 'password', 'first_name', 'last_name', 'email', 'telefono']
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True},
+            'username': {'required': False}
         }
 
     def create(self, validated_data):
-        user = CustomUser.objects.create_user(**validated_data)
+        password = validated_data.pop('password', None)
+        user = CustomUser(**validated_data)
+        if password:
+            user.set_password(password)
+        user.save()
         return user
 
 

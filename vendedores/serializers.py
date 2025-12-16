@@ -4,5 +4,8 @@ from .models import Vendedor
 class VendedorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vendedor
-        fields = ['id', 'nombre', 'email', 'telefono', 'fecha_registro']
+        fields = '__all__'
+        extra_kwargs = {
+            'id': {'read_only': True}
+        }
         read_only_fields = ['fecha_registro']
