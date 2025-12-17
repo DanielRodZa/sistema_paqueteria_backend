@@ -9,3 +9,6 @@ class VendedorSerializer(serializers.ModelSerializer):
             'id': {'read_only': True}
         }
         read_only_fields = ['fecha_registro']
+
+    def validate_nombre(self, value):
+        return value.upper()

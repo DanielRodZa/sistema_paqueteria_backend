@@ -123,12 +123,15 @@ class ReportesView(APIView):
         # Apply date filters on top of the base queryset
         date_after = request.query_params.get('date_after', None)
         date_before = request.query_params.get('date_before', None)
+        vendedor_query = request.query_params.get('vendedor', None)
 
         # The rest of your filtering logic is correct
         if date_after:
             base_queryset = base_queryset.filter(fecha_creacion__date__gte=date_after)
         if date_before:
             base_queryset = base_queryset.filter(fecha_creacion__date__lte=date_before)
+        if vendedor_query:
+            base_queryset = base_queryset.filter(vendedor__nombre__icontains=vendedor_query)
 
         # Perform calculations on the final, filtered queryset
         total_operaciones_periodo = base_queryset.count()
@@ -159,7 +162,7 @@ class ReportesView(APIView):
         paquetes_expirados_data = [
             {
                 'folio': op.folio,
-                'vendedor_nombre': op.vendedor_nombre,
+                'vendedor_nombre': op.vendedor.nombre if op.vendedor else 'N/A',
                 'fecha_expiracion': op.fecha_expiracion,
                 'costo': op.costo
             }
@@ -174,3 +177,53 @@ class ReportesView(APIView):
         }
 
         return Response(data)
+
+
+import csv
+from django.http import HttpResponse
+
+class OperacionExportView(generics.ListAPIView):
+    """
+    Vista para exportar operaciones a CSV.
+    Reutiliza los filtros y permisos de la lista.
+    """
+    serializer_class = OperacionSerializer
+    filterset_class = OperacionFilter
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Reutilizamos la lógica de filtrado base
+        user = self.request.user
+        if user.role == 'ADMIN' or user.is_superuser:
+            return Operacion.objects.all()
+        elif user.sucursal:
+            return Operacion.objects.filter(models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal))
+        return Operacion.objects.none()
+
+    def get(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="operaciones.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'Folio', 'Vendedor', 'Comprador', 'Sucursal Origen', 
+            'Sucursal Destino', 'Estado', 'Costo', 'Pagado', 'Fecha Creación', 'Fecha Expiración'
+        ])
+
+        for op in queryset:
+            writer.writerow([
+                op.folio,
+                op.vendedor.nombre if op.vendedor else 'N/A',
+                op.comprador,
+                op.sucursal_origen.nombre,
+                op.sucursal_destino.nombre,
+                op.get_estado_display(),
+                op.costo,
+                'Sí' if op.pagado else 'No',
+                op.fecha_creacion.strftime('%Y-%m-%d %H:%M'),
+                op.fecha_expiracion
+            ])
+
+        return response

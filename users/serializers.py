@@ -47,6 +47,12 @@ class RecepcionistaCreateSerializer(serializers.ModelSerializer):
         user.save()
         return user
 
+    def validate_first_name(self, value):
+        return value.upper()
+
+    def validate_last_name(self, value):
+        return value.upper()
+
 
 class UserSerializer(serializers.ModelSerializer):
     sucursal_nombre = serializers.CharField(source='sucursal.nombre', read_only=True)

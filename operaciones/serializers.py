@@ -70,3 +70,6 @@ class OperacionSerializer(serializers.ModelSerializer):
                 total_cost += penalty
         
         return total_cost
+
+    def validate_comprador(self, value):
+        return value.upper()
