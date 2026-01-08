@@ -9,9 +9,7 @@ from django.conf import settings
 
 class Operacion(models.Model):
     class Tamanos(models.TextChoices):
-        CHICO = 'CH', 'Chico'
-        MEDIANO = 'M', 'Mediano'
-        GRANDE = 'G', 'Grande'
+        ESTANDAR = 'STD', 'Estándar'
         EXTRA_LARGO = 'XL', 'Extra Largo'
 
     class Estados(models.TextChoices):
@@ -29,7 +27,7 @@ class Operacion(models.Model):
     folio = models.CharField(max_length=25, primary_key=True, unique=True)
     vendedor = models.ForeignKey(Vendedor, on_delete=models.PROTECT, related_name='operaciones')
     comprador = models.CharField(max_length=255, blank=False, null=False)
-    tamano_paquete = models.CharField(max_length=2, choices=Tamanos.choices, default=Tamanos.CHICO)
+    tamano_paquete = models.CharField(max_length=3, choices=Tamanos.choices, default=Tamanos.ESTANDAR)
     peso = models.DecimalField(max_digits=5, decimal_places=2, default=0.00)
     tipo_entrega = models.CharField(max_length=10, choices=TipoEntrega.choices, default=TipoEntrega.NORMAL)
 

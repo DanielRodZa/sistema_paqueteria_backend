@@ -4,8 +4,8 @@ from django.db import models
 class Vendedor(models.Model):
     id = models.CharField(max_length=15, primary_key=True, unique=False)
     nombre = models.CharField(max_length=255)
-    email = models.EmailField(max_length=255, blank=True)
-    telefono = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(max_length=255, blank=True, null=True)
+    telefono = models.CharField(max_length=20)
     fecha_registro = models.DateTimeField(auto_now_add=True)
 
     def save(self, *args, **kwargs):

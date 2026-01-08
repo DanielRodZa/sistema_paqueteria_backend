@@ -13,6 +13,9 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             token['role'] = 'ADMIN'
         else:
             token['role'] = user.role
+        
+        if user.sucursal:
+            token['sucursal'] = user.sucursal.id
 
         return token
 
@@ -25,6 +28,9 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
             data['role'] = 'ADMIN'
         else:
             data['role'] = self.user.role
+        
+        if self.user.sucursal:
+             data['sucursal'] = self.user.sucursal.id
 
         return data
 

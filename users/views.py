@@ -60,15 +60,30 @@ class UserCreateView(generics.CreateAPIView):
 
 
 class UserListView(generics.ListAPIView):
-    queryset = CustomUser.objects.filter(is_active=True).order_by('username')
     serializer_class = UserSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated] # We handle granular checks in get_queryset
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'ADMIN' or user.is_superuser:
+            return CustomUser.objects.filter(is_active=True).order_by('username')
+        elif user.role == 'MANAGER' and user.sucursal:
+            # Managers see only their receptionists
+            return CustomUser.objects.filter(is_active=True, sucursal=user.sucursal, role='RECEPCIONISTA').order_by('username')
+        return CustomUser.objects.none()
 
 
 class UserDetailView(generics.RetrieveUpdateDestroyAPIView):
-    queryset = CustomUser.objects.all()
     serializer_class = UserSerializer
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'ADMIN' or user.is_superuser:
+            return CustomUser.objects.all()
+        elif user.role == 'MANAGER' and user.sucursal:
+             return CustomUser.objects.filter(sucursal=user.sucursal, role='RECEPCIONISTA')
+        return CustomUser.objects.none()
 
     def perform_destroy(self, instance):
         instance.is_active = False
