@@ -52,9 +52,21 @@ class OperacionListCreateView(generics.ListCreateAPIView):
         user = self.request.user
         if user.role == 'ADMIN' or user.is_superuser:
             return Operacion.objects.all()
-        elif user.sucursal:
-            return Operacion.objects.filter(models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal))
-        return Operacion.objects.none()
+        
+        # Filter for users with specific branch or personal involvement
+        q_filter = models.Q()
+        if user.sucursal:
+            q_filter |= models.Q(sucursal_origen=user.sucursal)
+            q_filter |= models.Q(sucursal_destino=user.sucursal)
+        
+        # Also allow seeing operations handled by the user (useful if branch is missing or for tracking personal logs)
+        q_filter |= models.Q(recibido_por=user)
+        q_filter |= models.Q(entregado_por=user)
+
+        if not q_filter:
+            return Operacion.objects.none()
+
+        return Operacion.objects.filter(q_filter).distinct()
 
 
 class OperacionDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -69,9 +81,19 @@ class OperacionDetailView(generics.RetrieveUpdateDestroyAPIView):
         user = self.request.user
         if user.role == 'ADMIN' or user.is_superuser:
             return Operacion.objects.all()
-        elif user.sucursal:
-            return Operacion.objects.filter(models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal))
-        return Operacion.objects.none()
+        
+        q_filter = models.Q()
+        if user.sucursal:
+            q_filter |= models.Q(sucursal_origen=user.sucursal)
+            q_filter |= models.Q(sucursal_destino=user.sucursal)
+        
+        q_filter |= models.Q(recibido_por=user)
+        q_filter |= models.Q(entregado_por=user)
+
+        if not q_filter:
+            return Operacion.objects.none()
+
+        return Operacion.objects.filter(q_filter).distinct()
 
     def get_permissions(self):
         """
@@ -111,14 +133,21 @@ class ReportesView(APIView):
         if user.role == 'ADMIN' or user.is_superuser:
             # Admins see everything
             base_queryset = Operacion.objects.all()
-        elif user.sucursal:
-            # CORRECTED LOGIC: Managers see operations related to their branch (origin OR destination)
-            base_queryset = Operacion.objects.filter(
-                models.Q(sucursal_origen=user.sucursal) | models.Q(sucursal_destino=user.sucursal)
-            )
         else:
-            # If a non-admin user has no branch, they see nothing
-            base_queryset = Operacion.objects.none()
+            # Managers/Receptionists see operations of their branch OR operations they handled
+            q_filter = models.Q()
+            if user.sucursal:
+                q_filter |= models.Q(sucursal_origen=user.sucursal)
+                q_filter |= models.Q(sucursal_destino=user.sucursal)
+            
+            # Also allow seeing operations handled by the user
+            q_filter |= models.Q(recibido_por=user)
+            q_filter |= models.Q(entregado_por=user)
+
+            if q_filter:
+                base_queryset = Operacion.objects.filter(q_filter).distinct()
+            else:
+                base_queryset = Operacion.objects.none()
 
         # Apply date filters on top of the base queryset
         date_after = request.query_params.get('date_after', None)
@@ -131,6 +160,7 @@ class ReportesView(APIView):
         if date_before:
             base_queryset = base_queryset.filter(fecha_creacion__date__lte=date_before)
         if vendedor_query:
+            vendedor_query = vendedor_query.strip()
             base_queryset = base_queryset.filter(vendedor__nombre__icontains=vendedor_query)
 
         # Perform calculations on the final, filtered queryset

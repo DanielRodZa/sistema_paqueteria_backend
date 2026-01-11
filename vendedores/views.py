@@ -12,10 +12,12 @@ class VendedorListCreateView(generics.ListCreateAPIView):
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre', 'id']
     
-    def get_permissions(self):
-        if self.request.method in ['GET', 'POST']:
-            return [IsAuthenticated()]
-        return [IsAdminOrManagerUser()]
+    permission_classes = [IsAuthenticated]
+
+    # def get_permissions(self):
+    #     if self.request.method in ['GET', 'POST']:
+    #         return [IsAuthenticated()]
+    #     return [IsAdminOrManagerUser()]
 
 
 class VendedorDetailView(generics.RetrieveUpdateDestroyAPIView):
