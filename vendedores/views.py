@@ -46,6 +46,9 @@ class VendedorExportView(APIView):
     def get(self, request, *args, **kwargs):
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename="vendedores.csv"'
+        
+        # Add UTF-8 BOM for Excel compatibility
+        response.write(u'\ufeff'.encode('utf8'))
 
         writer = csv.writer(response)
         writer.writerow(['ID', 'Nombre', 'Email', 'Telefono', 'Fecha Registro'])
